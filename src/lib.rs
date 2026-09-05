@@ -1,4 +1,4 @@
-use image::{DynamicImage, ImageFormat, Rgba};
+use image::{DynamicImage, GenericImageView, ImageBuffer, ImageFormat, Rgba, RgbaImage};
 use std::collections::VecDeque;
 use std::io::Cursor;
 use wasm_bindgen::prelude::*;
@@ -7,6 +7,10 @@ use wasm_bindgen::prelude::*;
 pub struct ImageProcessor {
     original_img: DynamicImage,
     img: DynamicImage,
+    // Camera Transform State
+    zoom: f32,
+    pan_x: f32, // Offset in canvas coordinates
+    pan_y: f32,
 }
 
 #[wasm_bindgen]
@@ -18,7 +22,81 @@ impl ImageProcessor {
         Ok(ImageProcessor {
             original_img: img.clone(),
             img,
+            zoom: 1.0,
+            pan_x: 0.0,
+            pan_y: 0.0,
         })
+    }
+
+    // --- Transform Controls ---
+
+    pub fn set_zoom(&mut self, delta: f32) {
+        self.zoom = (self.zoom + delta).clamp(0.1, 10.0);
+    }
+
+    pub fn pan(&mut self, dx: f32, dy: f32) {
+        self.pan_x += dx;
+        self.pan_y += dy;
+    }
+
+    pub fn reset_transform(&mut self) {
+        self.zoom = 1.0;
+        self.pan_x = 0.0;
+        self.pan_y = 0.0;
+    }
+
+    // --- Coordinate Translation ---
+    // Converts canvas pixel locations into source image coordinates
+
+    pub fn canvas_to_image_x(&self, canvas_x: f32, canvas_w: f32) -> i32 {
+        let center_vp_x = canvas_w / 2.0;
+        let center_img_x = self.img.width() as f32 / 2.0;
+        ((canvas_x - center_vp_x - self.pan_x) / self.zoom + center_img_x).floor() as i32
+    }
+
+    pub fn canvas_to_image_y(&self, canvas_y: f32, canvas_h: f32) -> i32 {
+        let center_vp_y = canvas_h / 2.0;
+        let center_img_y = self.img.height() as f32 / 2.0;
+        ((canvas_y - center_vp_y - self.pan_y) / self.zoom + center_img_y).floor() as i32
+    }
+
+    // --- Render Transformed Viewport ---
+    // Draws source image pixels scaled/offset into a target canvas viewport size
+
+    pub fn render_viewport(&self, viewport_w: u32, viewport_h: u32) -> Vec<u8> {
+        let mut out_buf: RgbaImage = ImageBuffer::new(viewport_w, viewport_h);
+
+        let img_w = self.img.width() as f32;
+        let img_h = self.img.height() as f32;
+        let vp_w = viewport_w as f32;
+        let vp_h = viewport_h as f32;
+
+        let center_vp_x = vp_w / 2.0;
+        let center_vp_y = vp_h / 2.0;
+        let center_img_x = img_w / 2.0;
+        let center_img_y = img_h / 2.0;
+
+        for vy in 0..viewport_h {
+            for vx in 0..viewport_w {
+                let ix = ((vx as f32 - center_vp_x - self.pan_x) / self.zoom + center_img_x).floor()
+                    as i32;
+                let iy = ((vy as f32 - center_vp_y - self.pan_y) / self.zoom + center_img_y).floor()
+                    as i32;
+
+                if ix >= 0
+                    && ix < self.img.width() as i32
+                    && iy >= 0
+                    && iy < self.img.height() as i32
+                {
+                    let pixel = self.img.get_pixel(ix as u32, iy as u32);
+                    out_buf.put_pixel(vx, vy, pixel);
+                } else {
+                    out_buf.put_pixel(vx, vy, Rgba([0, 0, 0, 0]));
+                }
+            }
+        }
+
+        out_buf.into_raw()
     }
 
     pub fn reset_to_original(&mut self) {
@@ -41,7 +119,6 @@ impl ImageProcessor {
         self.img = self.img.flipv();
     }
 
-    /// Performs BFS flood fill and returns a 1D pixel mask (1 = selected, 0 = unselected)
     pub fn select_flood_fill(&self, start_x: u32, start_y: u32, tolerance: f32) -> Vec<u8> {
         let width = self.img.width();
         let height = self.img.height();
@@ -97,7 +174,6 @@ impl ImageProcessor {
         mask
     }
 
-    /// Clears selected pixels specified by the 1D binary mask array
     pub fn clear_mask_selection(&mut self, mask: &[u8]) {
         let width = self.img.width();
         let height = self.img.height();
@@ -157,7 +233,6 @@ impl ImageProcessor {
         Ok(buffer)
     }
 
-    /// Selects all matching color pixels across the whole image within a given tolerance (0.0 to 1.0)
     pub fn select_color_range(&self, target_x: u32, target_y: u32, tolerance: f32) -> Vec<u8> {
         let width = self.img.width();
         let height = self.img.height();

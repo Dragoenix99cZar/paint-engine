@@ -6,6 +6,7 @@ async function run() {
   const fileInput = document.getElementById('uploader');
   const canvas = document.getElementById('viewport');
   const overlay = document.getElementById('overlay');
+  const workspace = document.querySelector('.workspace');
   const ctx = canvas.getContext('2d');
   const octx = overlay.getContext('2d');
 
@@ -31,22 +32,35 @@ async function run() {
   let engine = null;
   let activeTool = 'none';
 
-  // Selection states
+  // Zoom & Pan state
+  let zoomLevel = 1.0;
+  const MIN_ZOOM = 0.1;
+  const MAX_ZOOM = 10.0;
+  const ZOOM_STEP = 0.1;
+
+  // Selection state
   let selectionType = 'none'; // 'box' or 'mask'
   let hasSelection = false;
   let pixelMask = null;
   let contourPath = null;
-  let lastClickCoords = null; // Store target point for real-time slider updates
+  let lastClickCoords = null;
 
   let dashOffset = 0;
   let isDragging = false;
-  let activeHandle = null; // 'nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w', 'move', 'new'
+  let activeHandle = null;
   let dragStartCoords = { x: 0, y: 0 };
   let initialBox = { x: 0, y: 0, w: 0, h: 0 };
   let selectionRect = { x: 0, y: 0, w: 0, h: 0 };
 
   const HANDLE_SIZE = 10;
   const HIT_PADDING = 6;
+
+  function updateTransform() {
+    canvas.style.transform = `scale(${zoomLevel})`;
+    overlay.style.transform = `scale(${zoomLevel})`;
+    canvas.style.transformOrigin = 'center center';
+    overlay.style.transformOrigin = 'center center';
+  }
 
   function setActiveTool(tool) {
     activeTool = activeTool === tool ? 'none' : tool;
@@ -57,7 +71,6 @@ async function run() {
 
     selectPanel.classList.toggle('hidden', activeTool !== 'select');
 
-    // Show tolerance panel for both Flood and Color Range tools
     const showTolerance = activeTool === 'flood' || activeTool === 'color-range';
     floodPanel.classList.toggle('hidden', !showTolerance);
 
@@ -112,7 +125,6 @@ async function run() {
     hasSelection = maskArray.some((v) => v === 1);
     contourPath = buildMaskContourPath(maskArray, engine.width(), engine.height());
 
-    // Calculate bounding box for mask selection
     if (hasSelection) {
       const bbox = getMaskBoundingBox(maskArray, engine.width(), engine.height());
       if (bbox) {
@@ -209,56 +221,129 @@ async function run() {
     };
   }
 
-  function getHitHandle(coords) {
+  function getHitHandle(imgCoords) {
     if (selectionType !== 'box' || !hasSelection) return null;
 
-    const handles = getHandles();
+    // Translate bounding box handles into canvas viewport space
+    const topLeft = imageToCanvasCoords(selectionRect.x, selectionRect.y);
+    const bottomRight = imageToCanvasCoords(
+      selectionRect.x + selectionRect.w,
+      selectionRect.y + selectionRect.h
+    );
+
+    const vx = topLeft.x;
+    const vy = topLeft.y;
+    const vw = bottomRight.x - topLeft.x;
+    const vh = bottomRight.y - topLeft.y;
+
+    // Canvas-space cursor position
+    const rect = overlay.getBoundingClientRect();
+    const screenX = lastMouseScreenX - rect.left;
+    const screenY = lastMouseScreenY - rect.top;
+
+    const vpHandles = {
+      nw: { x: vx, y: vy, cursor: 'nwse-resize' },
+      n:  { x: vx + vw / 2, y: vy, cursor: 'ns-resize' },
+      ne: { x: vx + vw, y: vy, cursor: 'nesw-resize' },
+      e:  { x: vx + vw, y: vy + vh / 2, cursor: 'ew-resize' },
+      se: { x: vx + vw, y: vy + vh, cursor: 'nwse-resize' },
+      s:  { x: vx + vw / 2, y: vy + vh, cursor: 'ns-resize' },
+      sw: { x: vx, y: vy + vh, cursor: 'nesw-resize' },
+      w:  { x: vx, y: vy + vh / 2, cursor: 'ew-resize' }
+    };
+
     const hitRadius = (HANDLE_SIZE / 2) + HIT_PADDING;
 
-    for (const [key, pos] of Object.entries(handles)) {
-      if (
-        Math.abs(coords.x - pos.x) <= hitRadius &&
-        Math.abs(coords.y - pos.y) <= hitRadius
-      ) {
+    for (const [key, pos] of Object.entries(vpHandles)) {
+      if (Math.abs(screenX - pos.x) <= hitRadius && Math.abs(screenY - pos.y) <= hitRadius) {
         return key;
       }
     }
 
-    const { x, y, w, h } = selectionRect;
-    if (coords.x >= x && coords.x <= x + w && coords.y >= y && coords.y <= y + h) {
+    if (imgCoords.x >= selectionRect.x && imgCoords.x <= selectionRect.x + selectionRect.w &&
+        imgCoords.y >= selectionRect.y && imgCoords.y <= selectionRect.y + selectionRect.h) {
       return 'move';
     }
 
     return null;
   }
 
+  function imageToCanvasCoords(imgX, imgY) {
+    // Queries zoom and pan state implicitly by sampling test points via Rust's transform math
+    const vpWidth = overlay.width;
+    const vpHeight = overlay.height;
+
+    // Derive canvas positions using Rust coordinate translation inverse:
+    // canvas_x = (imgX - center_img_x) * zoom + center_vp_x + pan_x
+    // We can pass two reference points or use Rust's canvas_to_image_x inverse formula:
+    const centerVpX = vpWidth / 2;
+    const centerVpY = vpHeight / 2;
+    const centerImgX = engine.width() / 2;
+    const centerImgY = engine.height() / 2;
+
+    // Extract zoom from engine by checking canvas_to_image delta across 1px
+    const zoom = 1 / (engine.canvas_to_image_x(1, vpWidth) - engine.canvas_to_image_x(0, vpWidth));
+
+    // Extract pan values
+    const panX = - (engine.canvas_to_image_x(0, vpWidth) - centerImgX) * zoom - centerVpX;
+    const panY = - (engine.canvas_to_image_y(0, vpHeight) - centerImgY) * zoom - centerVpY;
+
+    return {
+      x: (imgX - centerImgX) * zoom + centerVpX + panX,
+      y: (imgY - centerImgY) * zoom + centerVpY + panY,
+      zoom
+    };
+  }
+
   function drawOverlay() {
     octx.clearRect(0, 0, overlay.width, overlay.height);
 
-    if (hasSelection) {
+    if (hasSelection && engine) {
       dashOffset = (dashOffset + 0.4) % 12;
 
+      const imgW = engine.width();
+      const imgH = engine.height();
+      const vpW = overlay.width;
+      const vpH = overlay.height;
+
       if (selectionType === 'mask' && pixelMask) {
-        const imgW = engine.width();
-        const imgH = engine.height();
-        const maskImageData = octx.createImageData(imgW, imgH);
+        // Create a temporary offscreen canvas for the unscaled mask
+        const maskCanvas = document.createElement('canvas');
+        maskCanvas.width = imgW;
+        maskCanvas.height = imgH;
+        const maskCtx = maskCanvas.getContext('2d');
+
+        const maskImageData = maskCtx.createImageData(imgW, imgH);
         const data = maskImageData.data;
 
         for (let i = 0; i < pixelMask.length; i++) {
           if (pixelMask[i] === 1) {
             const idx = i * 4;
-            data[idx] = 99;
-            data[idx + 1] = 102;
-            data[idx + 2] = 241;
-            data[idx + 3] = 90;
+            data[idx] = 99;      // R
+            data[idx + 1] = 102; // G
+            data[idx + 2] = 241; // B
+            data[idx + 3] = 90;  // Alpha
           }
         }
-        octx.putImageData(maskImageData, 0, 0);
+        maskCtx.putImageData(maskImageData, 0, 0);
 
+        // Map image origin (0,0) and image dimensions into transformed viewport canvas bounds
+        const origin = imageToCanvasCoords(0, 0);
+        const corner = imageToCanvasCoords(imgW, imgH);
+        const scaledW = corner.x - origin.x;
+        const scaledH = corner.y - origin.y;
+
+        // Draw transformed mask overlay
+        octx.imageSmoothingEnabled = false;
+        octx.drawImage(maskCanvas, origin.x, origin.y, scaledW, scaledH);
+
+        // Draw marching ants outline over contour path
         if (contourPath) {
           octx.save();
-          octx.lineWidth = 1;
+          octx.translate(origin.x, origin.y);
+          octx.scale(origin.zoom, origin.zoom);
 
+          octx.lineWidth = 1 / origin.zoom;
           octx.strokeStyle = '#ffffff';
           octx.setLineDash([4, 4]);
           octx.lineDashOffset = -dashOffset;
@@ -271,49 +356,59 @@ async function run() {
           octx.restore();
         }
       } else if (selectionType === 'box') {
-        const { x, y, w, h } = selectionRect;
+        // Map selection rectangle from image space to canvas viewport space
+        const topLeft = imageToCanvasCoords(selectionRect.x, selectionRect.y);
+        const bottomRight = imageToCanvasCoords(
+          selectionRect.x + selectionRect.w,
+          selectionRect.y + selectionRect.h
+        );
 
-        // Dim outside bounding box
+        const vx = topLeft.x;
+        const vy = topLeft.y;
+        const vw = bottomRight.x - topLeft.x;
+        const vh = bottomRight.y - topLeft.y;
+
+        // Dim area outside selection box
         octx.fillStyle = 'rgba(0, 0, 0, 0.45)';
         octx.beginPath();
-        octx.rect(0, 0, overlay.width, overlay.height);
-        octx.rect(x, y, w, h);
+        octx.rect(0, 0, vpW, vpH);
+        octx.rect(vx, vy, vw, vh);
         octx.fill('evenodd');
 
-        // Bounding box marching ants border
+        // Marching ants bounding box
         octx.save();
         octx.lineWidth = 1.5;
 
         octx.strokeStyle = '#ffffff';
         octx.setLineDash([6, 6]);
         octx.lineDashOffset = -dashOffset;
-        octx.strokeRect(x, y, w, h);
+        octx.strokeRect(vx, vy, vw, vh);
 
         octx.strokeStyle = '#000000';
         octx.setLineDash([6, 6]);
         octx.lineDashOffset = -dashOffset + 6;
-        octx.strokeRect(x, y, w, h);
+        octx.strokeRect(vx, vy, vw, vh);
         octx.restore();
 
-        // Render visible sizing handles
-        const handles = getHandles();
+        // Render handle boxes at transformed positions
+        const vpHandles = {
+          nw: { x: vx, y: vy },
+          n:  { x: vx + vw / 2, y: vy },
+          ne: { x: vx + vw, y: vy },
+          e:  { x: vx + vw, y: vy + vh / 2 },
+          se: { x: vx + vw, y: vy + vh },
+          s:  { x: vx + vw / 2, y: vy + vh },
+          sw: { x: vx, y: vy },
+          w:  { x: vx, y: vy + vh / 2 }
+        };
+
         octx.fillStyle = '#ffffff';
         octx.strokeStyle = '#6366f1';
         octx.lineWidth = 1.5;
 
-        for (const pos of Object.values(handles)) {
-          octx.fillRect(
-            pos.x - HANDLE_SIZE / 2,
-            pos.y - HANDLE_SIZE / 2,
-            HANDLE_SIZE,
-            HANDLE_SIZE
-          );
-          octx.strokeRect(
-            pos.x - HANDLE_SIZE / 2,
-            pos.y - HANDLE_SIZE / 2,
-            HANDLE_SIZE,
-            HANDLE_SIZE
-          );
+        for (const pos of Object.values(vpHandles)) {
+          octx.fillRect(pos.x - HANDLE_SIZE / 2, pos.y - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
+          octx.strokeRect(pos.x - HANDLE_SIZE / 2, pos.y - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
         }
       }
     }
@@ -321,38 +416,85 @@ async function run() {
     requestAnimationFrame(drawOverlay);
   }
 
+  // Render viewport pixels directly from Rust
   function renderViewport() {
     if (!engine) return;
-    const width = engine.width();
-    const height = engine.height();
 
-    if (canvas.width !== width || canvas.height !== height) {
-      canvas.width = width;
-      canvas.height = height;
-      overlay.width = width;
-      overlay.height = height;
+    const vpWidth = workspace.clientWidth;
+    const vpHeight = workspace.clientHeight;
+
+    if (canvas.width !== vpWidth || canvas.height !== vpHeight) {
+      canvas.width = vpWidth;
+      canvas.height = vpHeight;
+      overlay.width = vpWidth;
+      overlay.height = vpHeight;
     }
 
-    const rawPixels = engine.get_rgba_pixels();
+    const rawPixels = engine.render_viewport(vpWidth, vpHeight);
     const imageData = new ImageData(
       new Uint8ClampedArray(rawPixels.buffer),
-      width,
-      height
+      vpWidth,
+      vpHeight
     );
 
     ctx.putImageData(imageData, 0, 0);
   }
 
+  // Convert click events on the canvas element into original image coordinates using Rust
   function getCanvasCoords(e) {
     const rect = overlay.getBoundingClientRect();
-    const scaleX = overlay.width / rect.width;
-    const scaleY = overlay.height / rect.height;
+    const canvasX = e.clientX - rect.left;
+    const canvasY = e.clientY - rect.top;
 
-    return {
-      x: Math.floor((e.clientX - rect.left) * scaleX),
-      y: Math.floor((e.clientY - rect.top) * scaleY)
-    };
+    const imgX = engine.canvas_to_image_x(canvasX, overlay.width);
+    const imgY = engine.canvas_to_image_y(canvasY, overlay.height);
+
+    return { x: imgX, y: imgY };
   }
+
+  // --- Keyboard & Wheel Bindings for Zoom & Pan ---
+
+  function changeZoom(delta) {
+    if (!engine) return;
+
+    // Route zoom change into Rust engine state
+    engine.set_zoom(delta);
+
+    // Re-render viewport to update pixel transforms
+    renderViewport();
+  }
+
+  window.addEventListener('keydown', (e) => {
+    // Zoom in with '+' or '='
+    if (e.ctrlKey && (e.key === '+' || e.key === '=')) {
+      e.preventDefault();
+      changeZoom(0.1);
+    }
+    // Zoom out with '-'
+    if (e.ctrlKey && e.key === '-') {
+      e.preventDefault();
+      changeZoom(-0.1);
+    }
+  });
+
+  // Route zoom and pan scroll events through Rust methods
+  workspace.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    if (!engine) return;
+
+    if (e.ctrlKey) {
+      const delta = e.deltaY < 0 ? 0.1 : -0.1;
+      engine.set_zoom(delta);
+    } else if (e.shiftKey) {
+      const speed = 25;
+      engine.pan(e.deltaY < 0 ? speed : -speed, 0);
+    } else {
+      const speed = 25;
+      engine.pan(0, e.deltaY < 0 ? speed : -speed);
+    }
+
+    renderViewport();
+  }, { passive: false });
 
   // Mouse Interaction Events
   overlay.addEventListener('mousedown', (e) => {
@@ -392,8 +534,17 @@ async function run() {
     }
   });
 
+  // Define screen position tracking variables near your drag/selection state
+  let lastMouseScreenX = 0;
+  let lastMouseScreenY = 0;
+
   window.addEventListener('mousemove', (e) => {
-    if (!engine || activeTool !== 'select') return;
+    if (!engine) return;
+
+    // Track global screen positions for getHitHandle calculation
+    lastMouseScreenX = e.clientX;
+    lastMouseScreenY = e.clientY;
+    if (activeTool !== 'select') return;
     const coords = getCanvasCoords(e);
 
     if (!isDragging && selectionType === 'box') {
@@ -529,6 +680,10 @@ async function run() {
 
     const arrayBuffer = await file.arrayBuffer();
     engine = new ImageProcessor(new Uint8Array(arrayBuffer));
+
+    // Reset engine camera transforms
+    engine.reset_transform();
+
     setActiveTool('none');
     resetSelection();
     renderViewport();
@@ -541,7 +696,6 @@ async function run() {
     renderViewport();
   };
 
-  // Add event listeners alongside the rotate button handler
   document.getElementById('btn-flip-h').onclick = () => {
     if (!engine) return;
     engine.flip_horizontal();
@@ -553,6 +707,16 @@ async function run() {
     if (!engine) return;
     engine.flip_vertical();
     resetSelection();
+    renderViewport();
+  };
+
+  document.getElementById('btn-reset-view').onclick = () => {
+    if (!engine) return;
+
+    // Resets zoom to 1.0 and pan coordinates to (0, 0) in Rust
+    engine.reset_transform();
+
+    // Re-render the canvas to update both viewport pixels and overlay transforms
     renderViewport();
   };
 
