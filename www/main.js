@@ -12,6 +12,8 @@ async function run() {
   // Controls
   const btnToggleSelect = document.getElementById('btn-toggle-select');
   const btnToggleFlood = document.getElementById('btn-toggle-flood');
+  const btnToggleColorRange = document.getElementById('btn-toggle-color-range');
+
   const selectPanel = document.getElementById('select-panel');
   const floodPanel = document.getElementById('flood-panel');
   const floodTolerance = document.getElementById('flood-tolerance');
@@ -34,6 +36,7 @@ async function run() {
   let hasSelection = false;
   let pixelMask = null;
   let contourPath = null;
+  let lastClickCoords = null; // Store target point for real-time slider updates
 
   let dashOffset = 0;
   let isDragging = false;
@@ -50,9 +53,13 @@ async function run() {
 
     btnToggleSelect.classList.toggle('active', activeTool === 'select');
     btnToggleFlood.classList.toggle('active', activeTool === 'flood');
+    btnToggleColorRange.classList.toggle('active', activeTool === 'color-range');
 
     selectPanel.classList.toggle('hidden', activeTool !== 'select');
-    floodPanel.classList.toggle('hidden', activeTool !== 'flood');
+
+    // Show tolerance panel for both Flood and Color Range tools
+    const showTolerance = activeTool === 'flood' || activeTool === 'color-range';
+    floodPanel.classList.toggle('hidden', !showTolerance);
 
     overlay.classList.toggle('active-tool', activeTool !== 'none');
 
@@ -66,6 +73,7 @@ async function run() {
     selectionType = 'none';
     pixelMask = null;
     contourPath = null;
+    lastClickCoords = null;
     selectionRect = { x: 0, y: 0, w: 0, h: 0 };
     selX.value = 0;
     selY.value = 0;
@@ -104,7 +112,7 @@ async function run() {
     hasSelection = maskArray.some((v) => v === 1);
     contourPath = buildMaskContourPath(maskArray, engine.width(), engine.height());
 
-    // Calculate bounding box for flood fill selection
+    // Calculate bounding box for mask selection
     if (hasSelection) {
       const bbox = getMaskBoundingBox(maskArray, engine.width(), engine.height());
       if (bbox) {
@@ -114,6 +122,23 @@ async function run() {
         selW.value = Math.round(bbox.w);
         selH.value = Math.round(bbox.h);
       }
+    }
+  }
+
+  function recalculateMaskSelection() {
+    if (!engine || !lastClickCoords) return;
+
+    const tolerance = parseFloat(floodTolerance.value) / 100.0;
+    let mask = null;
+
+    if (activeTool === 'flood') {
+      mask = engine.select_flood_fill(lastClickCoords.x, lastClickCoords.y, tolerance);
+    } else if (activeTool === 'color-range') {
+      mask = engine.select_color_range(lastClickCoords.x, lastClickCoords.y, tolerance);
+    }
+
+    if (mask) {
+      setPixelMaskSelection(mask);
     }
   }
 
@@ -335,8 +360,17 @@ async function run() {
     const coords = getCanvasCoords(e);
 
     if (activeTool === 'flood') {
+      lastClickCoords = coords;
       const tolerance = parseFloat(floodTolerance.value) / 100.0;
       const mask = engine.select_flood_fill(coords.x, coords.y, tolerance);
+      setPixelMaskSelection(mask);
+      return;
+    }
+
+    if (activeTool === 'color-range') {
+      lastClickCoords = coords;
+      const tolerance = parseFloat(floodTolerance.value) / 100.0;
+      const mask = engine.select_color_range(coords.x, coords.y, tolerance);
       setPixelMaskSelection(mask);
       return;
     }
@@ -441,8 +475,10 @@ async function run() {
     });
   });
 
+  // Dynamic tolerance slider updates
   floodTolerance.addEventListener('input', (e) => {
     toleranceVal.textContent = `${e.target.value}%`;
+    recalculateMaskSelection();
   });
 
   btnClearSelection.onclick = () => {
@@ -478,6 +514,7 @@ async function run() {
   btnDeselect.onclick = () => resetSelection();
   btnToggleSelect.onclick = () => setActiveTool('select');
   btnToggleFlood.onclick = () => setActiveTool('flood');
+  btnToggleColorRange.onclick = () => setActiveTool('color-range');
 
   document.getElementById('btn-reset-original').onclick = () => {
     if (!engine) return;
