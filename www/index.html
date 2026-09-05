@@ -29,7 +29,6 @@
       overflow: hidden;
     }
 
-    /* Toolbar */
     .toolbar {
       background-color: var(--panel-bg);
       border-bottom: 1px solid var(--border-color);
@@ -48,10 +47,7 @@
       padding-right: 12px;
     }
 
-    /* Form Controls */
-    input[type="file"] {
-      display: none;
-    }
+    input[type="file"] { display: none; }
 
     .input-field {
       width: 60px;
@@ -82,32 +78,23 @@
       transition: all 0.15s ease;
     }
 
-    .btn:hover {
-      background-color: var(--accent-color);
-    }
+    .btn:hover { background-color: var(--accent-color); }
+    .btn-primary { background-color: var(--accent-color); }
 
-    .btn-primary {
-      background-color: var(--accent-color);
-    }
-
-    /* Active Tool State Styling */
     .btn.active {
       background-color: var(--accent-color);
       border-color: #818cf8;
       box-shadow: 0 0 8px rgba(99, 102, 241, 0.5);
     }
 
-    .crop-controls {
+    .tool-panel {
       display: flex;
       gap: 8px;
       align-items: center;
     }
 
-    .hidden {
-      display: none !important;
-    }
+    .hidden { display: none !important; }
 
-    /* Workspace */
     .workspace {
       flex: 1;
       display: flex;
@@ -117,7 +104,6 @@
       padding: 20px;
     }
 
-    /* Canvas Wrapper Layering */
     .canvas-container {
       position: relative;
       box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
@@ -130,23 +116,17 @@
       background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
     }
 
-    #viewport {
-      display: block;
-    }
+    #viewport { display: block; }
 
     #overlay {
       position: absolute;
       top: 0;
       left: 0;
-      pointer-events: none; /* Disabled when no tool is active */
+      pointer-events: none;
       cursor: default;
     }
 
-    /* Active Crop Tool Cursor */
-    #overlay.active-crop {
-      pointer-events: auto;
-      cursor: crosshair;
-    }
+    #overlay.active-select { pointer-events: auto; cursor: crosshair; }
   </style>
 </head>
 <body>
@@ -157,38 +137,29 @@
       <input type="file" id="uploader" accept="image/png, image/jpeg, image/webp">
     </div>
 
-    <!-- Crop Tool Toggle & Parameters -->
+    <!-- Selection Group -->
     <div class="toolbar-group">
-      <button id="btn-toggle-crop" class="btn">Crop Tool</button>
-
-      <div id="crop-panel" class="crop-controls hidden">
-        <div class="input-group">
-          <label for="crop-x">X:</label>
-          <input type="number" id="crop-x" class="input-field" value="0" min="0">
-        </div>
-        <div class="input-group">
-          <label for="crop-y">Y:</label>
-          <input type="number" id="crop-y" class="input-field" value="0" min="0">
-        </div>
-        <div class="input-group">
-          <label for="crop-w">W:</label>
-          <input type="number" id="crop-w" class="input-field" value="0" min="1">
-        </div>
-        <div class="input-group">
-          <label for="crop-h">H:</label>
-          <input type="number" id="crop-h" class="input-field" value="0" min="1">
-        </div>
-        <button id="btn-apply-crop" class="btn btn-primary">Apply</button>
+      <button id="btn-toggle-select" class="btn">Select Region</button>
+      <div id="select-panel" class="tool-panel hidden">
+        <div class="input-group"><label for="sel-x">X:</label><input type="number" id="sel-x" class="input-field" value="0" min="0"></div>
+        <div class="input-group"><label for="sel-y">Y:</label><input type="number" id="sel-y" class="input-field" value="0" min="0"></div>
+        <div class="input-group"><label for="sel-w">W:</label><input type="number" id="sel-w" class="input-field" value="0" min="1"></div>
+        <div class="input-group"><label for="sel-h">H:</label><input type="number" id="sel-h" class="input-field" value="0" min="1"></div>
+        <button id="btn-crop-action" class="btn btn-primary">Crop Selection</button>
+        <button id="btn-clear-selection" class="btn">Delete Region</button>
+        <button id="btn-deselect" class="btn">Deselect</button>
       </div>
     </div>
 
     <div class="toolbar-group">
-      <button id="btn-resize" class="btn">Resize (800x600)</button>
       <button id="btn-rotate" class="btn">Rotate 90°</button>
     </div>
 
+    <!-- Export Group -->
     <div class="toolbar-group">
-      <button id="btn-export-webp" class="btn">Export WebP</button>
+      <button id="btn-export-png" class="btn">PNG</button>
+      <button id="btn-export-jpg" class="btn">JPG</button>
+      <button id="btn-export-webp" class="btn">WebP</button>
     </div>
   </header>
 
