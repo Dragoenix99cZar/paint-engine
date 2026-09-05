@@ -150,6 +150,14 @@ paint-engine
 
 ```
 
+---
+Error
+
+When Png or Jpg or Webp btn clicked, error
+"The file at 'blob:http://192.168.1.132:8080/f0dfeb11-4ed2-4e81-9b87-0b2ea0a31290' was loaded over an insecure connection. This file should be served over HTTPS."
+
+This error occurs because modern web browsers block automatic file downloads from blob: URLs when accessing your dev server over a local IP address ([http://192.168.1.132:8080](http://192.168.1.132:8080)) without HTTPS.
+
 
 ---
 CMD:

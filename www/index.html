@@ -11,7 +11,7 @@
       --accent-color: #6366f1;
       --text-color: #f3f4f6;
       --border-color: #3f3f4e;
-      --danger-color: #5e6918;
+      --danger-color: #ef4444;
     }
 
     * {
@@ -80,7 +80,7 @@
     }
 
     .btn:hover { background-color: var(--accent-color); }
-    .btn-primary { background-color: var(--accent-color); }
+    .btn-primary:hover { background-color: var(--accent-color); }
     .btn-danger:hover { background-color: var(--danger-color); }
 
     .btn.active {
@@ -128,7 +128,7 @@
       cursor: default;
     }
 
-    #overlay.active-select { pointer-events: auto; cursor: crosshair; }
+    #overlay.active-tool { pointer-events: auto; cursor: crosshair; }
   </style>
 </head>
 <body>
@@ -140,18 +140,29 @@
       <button id="btn-reset-original" class="btn btn-danger">Reset Image</button>
     </div>
 
-    <!-- Selection Group -->
+    <!-- Selection Tool Options -->
     <div class="toolbar-group">
-      <button id="btn-toggle-select" class="btn">Select Region</button>
+      <button id="btn-toggle-select" class="btn">Box Select</button>
+      <button id="btn-toggle-flood" class="btn">Flood Select</button>
+
       <div id="select-panel" class="tool-panel hidden">
         <div class="input-group"><label for="sel-x">X:</label><input type="number" id="sel-x" class="input-field" value="0" min="0"></div>
         <div class="input-group"><label for="sel-y">Y:</label><input type="number" id="sel-y" class="input-field" value="0" min="0"></div>
         <div class="input-group"><label for="sel-w">W:</label><input type="number" id="sel-w" class="input-field" value="0" min="1"></div>
         <div class="input-group"><label for="sel-h">H:</label><input type="number" id="sel-h" class="input-field" value="0" min="1"></div>
-        <button id="btn-crop-action" class="btn btn-primary">Crop Selection</button>
-        <button id="btn-clear-selection" class="btn">Delete Region</button>
-        <button id="btn-deselect" class="btn">Deselect</button>
       </div>
+
+      <div id="flood-panel" class="tool-panel hidden">
+        <div class="input-group">
+          <label for="flood-tolerance">Tolerance:</label>
+          <input type="range" id="flood-tolerance" min="0" max="100" value="20">
+          <span id="tolerance-val">20%</span>
+        </div>
+      </div>
+
+      <button id="btn-crop-action" class="btn btn-primary">Crop</button>
+      <button id="btn-clear-selection" class="btn">Delete Region</button>
+      <button id="btn-deselect" class="btn">Deselect</button>
     </div>
 
     <div class="toolbar-group">
