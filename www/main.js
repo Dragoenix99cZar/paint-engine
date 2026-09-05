@@ -15,6 +15,7 @@ async function run() {
   const btnCropAction = document.getElementById('btn-crop-action');
   const btnClearSelection = document.getElementById('btn-clear-selection');
   const btnDeselect = document.getElementById('btn-deselect');
+  const btnResetImg = document.getElementById('btn-reset-original');
 
   const selX = document.getElementById('sel-x');
   const selY = document.getElementById('sel-y');
@@ -44,6 +45,10 @@ async function run() {
 
     if (activeTool === 'select' && engine && !hasSelection) {
       setSelection(0, 0, engine.width(), engine.height());
+    }
+
+    if (activeTool === 'none') {
+      resetSelection();
     }
   }
 
@@ -293,6 +298,13 @@ async function run() {
   btnClearSelection.onclick = () => {
     if (!engine || !hasSelection || selectionRect.w <= 0 || selectionRect.h <= 0) return;
     engine.clear_selection(selectionRect.x, selectionRect.y, selectionRect.w, selectionRect.h);
+    resetSelection();
+    renderViewport();
+  };
+
+  btnResetImg.onclick = () => {
+    if (!engine) return;
+    engine.reset_to_original();
     resetSelection();
     renderViewport();
   };

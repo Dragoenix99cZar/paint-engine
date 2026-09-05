@@ -4,6 +4,7 @@ use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 pub struct ImageProcessor {
+    original_img: DynamicImage,
     img: DynamicImage,
 }
 
@@ -13,7 +14,14 @@ impl ImageProcessor {
     pub fn new(data: &[u8]) -> Result<ImageProcessor, JsValue> {
         let img = image::load_from_memory(data)
             .map_err(|e| JsValue::from_str(&format!("Failed to load image: {}", e)))?;
-        Ok(ImageProcessor { img })
+        Ok(ImageProcessor {
+            original_img: img.clone(),
+            img,
+        })
+    }
+
+    pub fn reset_to_original(&mut self) {
+        self.img = self.original_img.clone();
     }
 
     pub fn width(&self) -> u32 {

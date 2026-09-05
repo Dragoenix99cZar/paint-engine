@@ -11,6 +11,7 @@
       --accent-color: #6366f1;
       --text-color: #f3f4f6;
       --border-color: #3f3f4e;
+      --danger-color: #5e6918;
     }
 
     * {
@@ -80,6 +81,7 @@
 
     .btn:hover { background-color: var(--accent-color); }
     .btn-primary { background-color: var(--accent-color); }
+    .btn-danger:hover { background-color: var(--danger-color); }
 
     .btn.active {
       background-color: var(--accent-color);
@@ -135,6 +137,7 @@
     <div class="toolbar-group">
       <label for="uploader" class="btn btn-primary">Open Image</label>
       <input type="file" id="uploader" accept="image/png, image/jpeg, image/webp">
+      <button id="btn-reset-original" class="btn btn-danger">Reset Image</button>
     </div>
 
     <!-- Selection Group -->
