@@ -1,7 +1,5 @@
 # Project Context & Agent Handoff Spec
 
-> **Agent Note:** This document serves as a persistent context file for LLM agents working on this project. It tracks ideation, architectural decisions, completed work, and upcoming roadmap items to ensure continuity across sessions.
-
 ---
 
 ## 1. Project Ideation
