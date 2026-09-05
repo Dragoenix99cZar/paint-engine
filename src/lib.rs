@@ -33,6 +33,14 @@ impl ImageProcessor {
         self.img.height()
     }
 
+    pub fn flip_horizontal(&mut self) {
+        self.img = self.img.fliph();
+    }
+
+    pub fn flip_vertical(&mut self) {
+        self.img = self.img.flipv();
+    }
+
     /// Performs BFS flood fill and returns a 1D pixel mask (1 = selected, 0 = unselected)
     pub fn select_flood_fill(&self, start_x: u32, start_y: u32, tolerance: f32) -> Vec<u8> {
         let width = self.img.width();
@@ -148,6 +156,7 @@ impl ImageProcessor {
 
         Ok(buffer)
     }
+
     /// Selects all matching color pixels across the whole image within a given tolerance (0.0 to 1.0)
     pub fn select_color_range(&self, target_x: u32, target_y: u32, tolerance: f32) -> Vec<u8> {
         let width = self.img.width();

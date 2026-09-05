@@ -541,6 +541,21 @@ async function run() {
     renderViewport();
   };
 
+  // Add event listeners alongside the rotate button handler
+  document.getElementById('btn-flip-h').onclick = () => {
+    if (!engine) return;
+    engine.flip_horizontal();
+    resetSelection();
+    renderViewport();
+  };
+
+  document.getElementById('btn-flip-v').onclick = () => {
+    if (!engine) return;
+    engine.flip_vertical();
+    resetSelection();
+    renderViewport();
+  };
+
   function exportImage(format, mimeType) {
     if (!engine) return;
 
